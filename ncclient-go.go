@@ -81,7 +81,7 @@ func MakeClient(username string, password string, hostname string, port int) ncc
 	}
 
 	if err := sshSession.RequestSubsystem("netconf"); err != nil {
-	    // TODO: the command `xml-mode netconf need-trailer` can be executed
+		// TODO: the command `xml-mode netconf need-trailer` can be executed
 		// as a  backup if the netconf subsystem is not available, try that if we fail
 		panic("Failed to make subsystem request: " + err.Error())
 	}
