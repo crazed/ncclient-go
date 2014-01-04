@@ -86,7 +86,7 @@ func MakeClient(username string, password string, hostname string, port int) ncc
 		panic("Failed to make subsystem request: " + err.Error())
 	}
 
-    nc := new(ncclient)
+	nc := new(ncclient)
 	nc.username = username
 	nc.password = password
 	nc.hostname = hostname
