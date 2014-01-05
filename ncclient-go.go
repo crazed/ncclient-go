@@ -9,6 +9,8 @@ import (
 	"strconv"
 )
 
+const NETCONF_DELIM string = "]]>]]>"
+
 type clientPassword string
 
 func (p clientPassword) Password(user string) (string, error) {
@@ -31,8 +33,7 @@ func (n ncclient) Close() {
 }
 
 func (n ncclient) Write(line string) []string {
-	delim := "]]>]]>"
-	line = line + delim
+	line = line + NETCONF_DELIM
 	input := bytes.NewBufferString(line)
 	b, err := n.sessionStdin.Write(input.Bytes())
 	if err != nil && err != io.EOF {
@@ -44,7 +45,7 @@ func (n ncclient) Write(line string) []string {
 	scanner := bufio.NewScanner(n.sessionStdout)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line == "]]>]]>" {
+		if line == NETCONF_DELIM {
 			break
 		}
 		xmlData = append(xmlData, line)
