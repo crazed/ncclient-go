@@ -3,11 +3,12 @@ package main;
 import (
 	"github.com/crazed/ncclient-go"
 	"fmt"
+	"os"
 )
 
 func main() {
-	username := "root"
-	password := "password"
+	username := os.Getenv("USER")
+	password := os.Getenv("PASSWORD")
 
 	nc := ncclient.MakeClient(username, password, "10.200.2.1", 22)
 	defer nc.Close()
