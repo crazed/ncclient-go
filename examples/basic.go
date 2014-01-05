@@ -1,8 +1,8 @@
-package main;
+package main
 
 import (
-	"github.com/crazed/ncclient-go"
 	"fmt"
+	"github.com/crazed/ncclient-go"
 	"os"
 )
 

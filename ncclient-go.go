@@ -1,11 +1,11 @@
-package ncclient;
+package ncclient
 
 import (
+	"bufio"
+	"bytes"
 	"code.google.com/p/go.crypto/ssh"
 	"fmt"
 	"io"
-	"bufio"
-	"bytes"
 	"strconv"
 )
 
@@ -21,10 +21,10 @@ type ncclient struct {
 	username string
 	password string
 	hostname string
-	port int
+	port     int
 
-	session *ssh.Session
-	sessionStdin io.WriteCloser
+	session       *ssh.Session
+	sessionStdin  io.WriteCloser
 	sessionStdout io.Reader
 }
 
@@ -67,7 +67,7 @@ func MakeClient(username string, password string, hostname string, port int) ncc
 	}
 
 	sshSession, err := sshClient.NewSession()
-	if err != nil{
+	if err != nil {
 		panic("Failed to create session: " + err.Error())
 	}
 
