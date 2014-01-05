@@ -11,8 +11,9 @@ import (
 func main() {
 	username := os.Getenv("USER")
 	password := os.Getenv("PASSWORD")
+	host := os.Getenv("HOST")
 
-	nc := ncclient.MakeClient(username, password, "10.200.2.1", 22)
+	nc := ncclient.MakeClient(username, password, host, 22)
 	defer nc.Close()
 
 	// Write a simple Hello to get going
