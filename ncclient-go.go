@@ -7,9 +7,28 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 )
 
 const NETCONF_DELIM string = "]]>]]>"
+const NETCONF_HELLO string = `
+<?xml version="1.0" encoding="UTF-8"?>
+<nc:hello xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+	<nc:capabilities>
+		<nc:capability>urn:ietf:params:netconf:capability:writable-running:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:rollback-on-error:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:validate:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:confirmed-commit:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:url:1.0?scheme=http,ftp,file,https,sftp</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:base:1.0</nc:capability>
+		<nc:capability>urn:liberouter:params:netconf:capability:power-control:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:candidate:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:xpath:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:startup:1.0</nc:capability>
+		<nc:capability>urn:ietf:params:netconf:capability:interleave:1.0</nc:capability>
+	</nc:capabilities>
+</nc:hello>
+`
 
 type clientPassword string
 
@@ -32,14 +51,24 @@ func (n ncclient) Close() {
 	n.session.Close()
 }
 
-func (n ncclient) Write(line string) []string {
+func (n ncclient) SendHello() string {
+	return n.Write(NETCONF_HELLO)
+}
+
+// TODO: use the xml module to add/remove rpc related tags
+func (n ncclient) WriteRPC(line string) string {
+	line = fmt.Sprintf("<rpc>%s</rpc>", line)
+	return n.Write(line)
+}
+
+// TODO: return io.Reader here rather than a string
+func (n ncclient) Write(line string) string {
 	line = line + NETCONF_DELIM
 	input := bytes.NewBufferString(line)
-	b, err := n.sessionStdin.Write(input.Bytes())
+	_, err := n.sessionStdin.Write(input.Bytes())
 	if err != nil && err != io.EOF {
 		panic(err)
 	}
-	fmt.Printf("Wrote %d bytes: %s\n", b, input.String())
 
 	xmlData := make([]string, 1)
 	scanner := bufio.NewScanner(n.sessionStdout)
@@ -50,7 +79,7 @@ func (n ncclient) Write(line string) []string {
 		}
 		xmlData = append(xmlData, line)
 	}
-	return xmlData
+	return strings.Join(xmlData, "")
 }
 
 func MakeClient(username string, password string, hostname string, port int) ncclient {

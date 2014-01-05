@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/crazed/ncclient-go"
+	"launchpad.net/xmlpath"
 	"os"
 )
 
@@ -14,17 +16,22 @@ func main() {
 	defer nc.Close()
 
 	// Write a simple Hello to get going
-	result := nc.Write(`<?xml version="1.0" encoding="UTF-8"?><nc:hello xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"><nc:capabilities><nc:capability>urn:ietf:params:netconf:capability:writable-running:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:rollback-on-error:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:validate:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:confirmed-commit:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:url:1.0?scheme=http,ftp,file,https,sftp</nc:capability><nc:capability>urn:ietf:params:netconf:base:1.0</nc:capability><nc:capability>urn:liberouter:params:netconf:capability:power-control:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:candidate:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:xpath:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:startup:1.0</nc:capability><nc:capability>urn:ietf:params:netconf:capability:interleave:1.0</nc:capability></nc:capabilities></nc:hello>`)
-
-	for _, r := range result {
-		fmt.Println(r)
-	}
+	nc.SendHello()
 
 	// Request chassis inventory (juniper specific)
-	result = nc.Write(`<?xml version="1.0" encoding="UTF-8"?><nc:rpc xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="urn:uuid:004e7200-7585-11e3-8919-525400625005"><nc:get-chassis-inventory/></nc:rpc>`)
+	result := nc.WriteRPC("<get-chassis-inventory/>")
 
-	for _, r := range result {
-		fmt.Println(r)
+	// Extract some useful information using xmlpath
+	description_path := xmlpath.MustCompile("//chassis/description")
+	serial_number_path := xmlpath.MustCompile("//chassis/serial-number")
+	// If WriteRPC returned io.Reader, we wouldn't need to create a buffer string
+	b := bytes.NewBufferString(result)
+	root, _ := xmlpath.Parse(b)
+
+	if description, ok := description_path.String(root); ok {
+		fmt.Println("Chassis:", description)
 	}
-	fmt.Printf("Neat i guess?\n")
+	if serial_number, ok := serial_number_path.String(root); ok {
+		fmt.Println("Serial:", serial_number)
+	}
 }
