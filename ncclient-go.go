@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 )
 
 const NETCONF_DELIM string = "]]>]]>"
@@ -51,35 +50,31 @@ func (n ncclient) Close() {
 	n.session.Close()
 }
 
-func (n ncclient) SendHello() string {
+func (n ncclient) SendHello() io.Reader {
 	return n.Write(NETCONF_HELLO)
 }
 
 // TODO: use the xml module to add/remove rpc related tags
-func (n ncclient) WriteRPC(line string) string {
+func (n ncclient) WriteRPC(line string) io.Reader {
 	line = fmt.Sprintf("<rpc>%s</rpc>", line)
 	return n.Write(line)
 }
 
-// TODO: return io.Reader here rather than a string
-func (n ncclient) Write(line string) string {
-	line = line + NETCONF_DELIM
-	input := bytes.NewBufferString(line)
-	_, err := n.sessionStdin.Write(input.Bytes())
-	if err != nil && err != io.EOF {
+func (n ncclient) Write(line string) io.Reader {
+	if _, err := io.WriteString(n.sessionStdin, line+NETCONF_DELIM); err != nil {
 		panic(err)
 	}
 
-	xmlData := make([]string, 1)
+	xmlBuffer := bytes.NewBufferString("")
 	scanner := bufio.NewScanner(n.sessionStdout)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == NETCONF_DELIM {
 			break
 		}
-		xmlData = append(xmlData, line)
+		xmlBuffer.WriteString(line)
 	}
-	return strings.Join(xmlData, "")
+	return xmlBuffer
 }
 
 func MakeClient(username string, password string, hostname string, port int) ncclient {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/crazed/ncclient-go"
 	"launchpad.net/xmlpath"
@@ -25,9 +24,7 @@ func main() {
 	// Extract some useful information using xmlpath
 	description_path := xmlpath.MustCompile("//chassis/description")
 	serial_number_path := xmlpath.MustCompile("//chassis/serial-number")
-	// If WriteRPC returned io.Reader, we wouldn't need to create a buffer string
-	b := bytes.NewBufferString(result)
-	root, _ := xmlpath.Parse(b)
+	root, _ := xmlpath.Parse(result)
 
 	if description, ok := description_path.String(root); ok {
 		fmt.Println("Chassis:", description)
