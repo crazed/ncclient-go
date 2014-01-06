@@ -13,6 +13,9 @@ func main() {
 	host := os.Getenv("HOST")
 
 	nc := ncclient.MakeClient(username, password, host, 22)
+	if err := nc.Connect(); err != nil {
+		panic(err)
+	}
 	defer nc.Close()
 
 	// Write a simple Hello to get going

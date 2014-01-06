@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"code.google.com/p/go.crypto/ssh"
+	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 )
 
@@ -35,7 +37,7 @@ func (p clientPassword) Password(user string) (string, error) {
 	return string(p), nil
 }
 
-type ncclient struct {
+type Ncclient struct {
 	username string
 	password string
 	hostname string
@@ -46,21 +48,25 @@ type ncclient struct {
 	sessionStdout io.Reader
 }
 
-func (n ncclient) Close() {
+func (n Ncclient) Hostname() string {
+	return n.hostname
+}
+
+func (n Ncclient) Close() {
 	n.session.Close()
 }
 
-func (n ncclient) SendHello() io.Reader {
+func (n Ncclient) SendHello() io.Reader {
 	return n.Write(NETCONF_HELLO)
 }
 
 // TODO: use the xml module to add/remove rpc related tags
-func (n ncclient) WriteRPC(line string) io.Reader {
+func (n Ncclient) WriteRPC(line string) io.Reader {
 	line = fmt.Sprintf("<rpc>%s</rpc>", line)
 	return n.Write(line)
 }
 
-func (n ncclient) Write(line string) io.Reader {
+func (n Ncclient) Write(line string) io.Reader {
 	if _, err := io.WriteString(n.sessionStdin, line+NETCONF_DELIM); err != nil {
 		panic(err)
 	}
@@ -77,47 +83,63 @@ func (n ncclient) Write(line string) io.Reader {
 	return xmlBuffer
 }
 
-func MakeClient(username string, password string, hostname string, port int) ncclient {
-	sshConfig := &ssh.ClientConfig{
+func MakeSshClient(username string, password string, hostname string, port int) (*ssh.Session, io.WriteCloser, io.Reader) {
+	config := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.ClientAuth{
 			ssh.ClientAuthPassword(clientPassword(password)),
 		},
 	}
 
-	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", hostname, strconv.Itoa(port)), sshConfig)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", hostname, strconv.Itoa(port)), config)
 	if err != nil {
-		panic("Failed to dial:" + err.Error())
+		panic("Failed to dial:" + hostname + err.Error())
 	}
 
-	sshSession, err := sshClient.NewSession()
+	session, err := client.NewSession()
 	if err != nil {
 		panic("Failed to create session: " + err.Error())
 	}
 
-	stdin, err := sshSession.StdinPipe()
+	stdin, err := session.StdinPipe()
 	if err != nil {
 		panic(err)
 	}
 
-	stdout, err := sshSession.StdoutPipe()
+	stdout, err := session.StdoutPipe()
 	if err != nil {
 		panic(err)
 	}
+	return session, stdin, stdout
+}
+
+func (n *Ncclient) Connect() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(runtime.Error); ok {
+				panic(r)
+			}
+			err = errors.New(r.(string))
+		}
+	}()
+	sshSession, sessionStdin, sessionStdout := MakeSshClient(n.username, n.password, n.hostname, n.port)
 
 	if err := sshSession.RequestSubsystem("netconf"); err != nil {
 		// TODO: the command `xml-mode netconf need-trailer` can be executed
 		// as a  backup if the netconf subsystem is not available, try that if we fail
 		panic("Failed to make subsystem request: " + err.Error())
 	}
+	n.session = sshSession
+	n.sessionStdin = sessionStdin
+	n.sessionStdout = sessionStdout
+	return
+}
 
-	nc := new(ncclient)
+func MakeClient(username string, password string, hostname string, port int) Ncclient {
+	nc := new(Ncclient)
 	nc.username = username
 	nc.password = password
 	nc.hostname = hostname
 	nc.port = port
-	nc.session = sshSession
-	nc.sessionStdin = stdin
-	nc.sessionStdout = stdout
 	return *nc
 }
