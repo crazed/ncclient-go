@@ -78,7 +78,7 @@ func (n Ncclient) Write(line string) io.Reader {
 		if line == NETCONF_DELIM {
 			break
 		}
-		xmlBuffer.WriteString(line)
+		xmlBuffer.WriteString(line + "\n")
 	}
 	return xmlBuffer
 }
