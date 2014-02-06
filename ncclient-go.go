@@ -4,6 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"code.google.com/p/go.crypto/ssh"
+	"crypto"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +45,7 @@ type Ncclient struct {
 	username string
 	password string
 	hostname string
+	key      string
 	port     int
 
 	session       *ssh.Session
@@ -83,12 +88,33 @@ func (n Ncclient) Write(line string) io.Reader {
 	return xmlBuffer
 }
 
-func MakeSshClient(username string, password string, hostname string, port int) (*ssh.Session, io.WriteCloser, io.Reader) {
-	config := &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.ClientAuth{
-			ssh.ClientAuthPassword(clientPassword(password)),
-		},
+func MakeSshClient(username string, password string, hostname string, key string, port int) (*ssh.Session, io.WriteCloser, io.Reader) {
+
+	var config *ssh.ClientConfig
+
+	if key != "" {
+		block, _ := pem.Decode([]byte(key))
+		if block == nil {
+			panic("Impropery formatted private key received!")
+		}
+
+		rsakey, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
+		clientKey := &keychain{rsakey}
+
+		config = &ssh.ClientConfig{
+			User: username,
+			Auth: []ssh.ClientAuth{
+				ssh.ClientAuthKeyring(clientKey),
+				ssh.ClientAuthPassword(clientPassword(password)),
+			},
+		}
+	} else {
+		config = &ssh.ClientConfig{
+			User: username,
+			Auth: []ssh.ClientAuth{
+				ssh.ClientAuthPassword(clientPassword(password)),
+			},
+		}
 	}
 
 	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", hostname, strconv.Itoa(port)), config)
@@ -122,7 +148,7 @@ func (n *Ncclient) Connect() (err error) {
 			err = errors.New(r.(string))
 		}
 	}()
-	sshSession, sessionStdin, sessionStdout := MakeSshClient(n.username, n.password, n.hostname, n.port)
+	sshSession, sessionStdin, sessionStdout := MakeSshClient(n.username, n.password, n.hostname, n.key, n.port)
 
 	if err := sshSession.RequestSubsystem("netconf"); err != nil {
 		// TODO: the command `xml-mode netconf need-trailer` can be executed
@@ -135,11 +161,31 @@ func (n *Ncclient) Connect() (err error) {
 	return
 }
 
-func MakeClient(username string, password string, hostname string, port int) Ncclient {
+func MakeClient(username string, password string, hostname string, key string, port int) Ncclient {
 	nc := new(Ncclient)
 	nc.username = username
 	nc.password = password
 	nc.hostname = hostname
+	nc.key = key
 	nc.port = port
 	return *nc
+}
+
+type keychain struct {
+	key *rsa.PrivateKey
+}
+
+func (k *keychain) Key(i int) (ssh.PublicKey, error) {
+	if i != 0 {
+		return nil, nil
+	}
+	return ssh.NewPublicKey(&k.key.PublicKey)
+}
+
+func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
+	hashFunc := crypto.SHA1
+	h := hashFunc.New()
+	h.Write(data)
+	digest := h.Sum(nil)
+	return rsa.SignPKCS1v15(rand, k.key, hashFunc, digest)
 }
