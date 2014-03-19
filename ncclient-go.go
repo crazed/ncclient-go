@@ -48,6 +48,7 @@ type Ncclient struct {
 	key      string
 	port     int
 
+	sshClient     *ssh.ClientConn
 	session       *ssh.Session
 	sessionStdin  io.WriteCloser
 	sessionStdout io.Reader
@@ -59,6 +60,7 @@ func (n Ncclient) Hostname() string {
 
 func (n Ncclient) Close() {
 	n.session.Close()
+	n.sshClient.Close()
 }
 
 func (n Ncclient) SendHello() io.Reader {
@@ -88,7 +90,7 @@ func (n Ncclient) Write(line string) io.Reader {
 	return xmlBuffer
 }
 
-func MakeSshClient(username string, password string, hostname string, key string, port int) (*ssh.Session, io.WriteCloser, io.Reader) {
+func MakeSshClient(username string, password string, hostname string, key string, port int) (*ssh.ClientConn, *ssh.Session, io.WriteCloser, io.Reader) {
 
 	var config *ssh.ClientConfig
 
@@ -136,7 +138,7 @@ func MakeSshClient(username string, password string, hostname string, key string
 	if err != nil {
 		panic(err)
 	}
-	return session, stdin, stdout
+	return client, session, stdin, stdout
 }
 
 func (n *Ncclient) Connect() (err error) {
@@ -148,13 +150,14 @@ func (n *Ncclient) Connect() (err error) {
 			err = errors.New(r.(string))
 		}
 	}()
-	sshSession, sessionStdin, sessionStdout := MakeSshClient(n.username, n.password, n.hostname, n.key, n.port)
+	sshClient, sshSession, sessionStdin, sessionStdout := MakeSshClient(n.username, n.password, n.hostname, n.key, n.port)
 
 	if err := sshSession.RequestSubsystem("netconf"); err != nil {
 		// TODO: the command `xml-mode netconf need-trailer` can be executed
 		// as a  backup if the netconf subsystem is not available, try that if we fail
 		panic("Failed to make subsystem request: " + err.Error())
 	}
+	n.sshClient = sshClient
 	n.session = sshSession
 	n.sessionStdin = sessionStdin
 	n.sessionStdout = sessionStdout
