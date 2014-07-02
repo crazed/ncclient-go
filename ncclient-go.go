@@ -4,10 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"code.google.com/p/go.crypto/ssh"
-	"crypto"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +44,7 @@ type Ncclient struct {
 	key      string
 	port     int
 
-	sshClient     *ssh.ClientConn
+	sshClient     *ssh.Client
 	session       *ssh.Session
 	sessionStdin  io.WriteCloser
 	sessionStdout io.Reader
@@ -90,31 +86,25 @@ func (n Ncclient) Write(line string) io.Reader {
 	return xmlBuffer
 }
 
-func MakeSshClient(username string, password string, hostname string, key string, port int) (*ssh.ClientConn, *ssh.Session, io.WriteCloser, io.Reader) {
+func MakeSshClient(username string, password string, hostname string, key string, port int) (*ssh.Client, *ssh.Session, io.WriteCloser, io.Reader) {
 
 	var config *ssh.ClientConfig
 
 	if key != "" {
-		block, _ := pem.Decode([]byte(key))
-		if block == nil {
-			panic("Impropery formatted private key received!")
-		}
-
-		rsakey, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
-		clientKey := &keychain{rsakey}
+		signer, _ := ssh.ParsePrivateKey([]byte(key))
 
 		config = &ssh.ClientConfig{
 			User: username,
-			Auth: []ssh.ClientAuth{
-				ssh.ClientAuthKeyring(clientKey),
-				ssh.ClientAuthPassword(clientPassword(password)),
+			Auth: []ssh.AuthMethod{
+				ssh.PublicKeys(signer),
+				ssh.Password(password),
 			},
 		}
 	} else {
 		config = &ssh.ClientConfig{
 			User: username,
-			Auth: []ssh.ClientAuth{
-				ssh.ClientAuthPassword(clientPassword(password)),
+			Auth: []ssh.AuthMethod{
+				ssh.Password(password),
 			},
 		}
 	}
@@ -174,23 +164,4 @@ func MakeClient(username string, password string, hostname string, key string, p
 	nc.key = key
 	nc.port = port
 	return *nc
-}
-
-type keychain struct {
-	key *rsa.PrivateKey
-}
-
-func (k *keychain) Key(i int) (ssh.PublicKey, error) {
-	if i != 0 {
-		return nil, nil
-	}
-	return ssh.NewPublicKey(&k.key.PublicKey)
-}
-
-func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
-	hashFunc := crypto.SHA1
-	h := hashFunc.New()
-	h.Write(data)
-	digest := h.Sum(nil)
-	return rsa.SignPKCS1v15(rand, k.key, hashFunc, digest)
 }
