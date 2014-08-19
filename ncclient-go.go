@@ -9,6 +9,7 @@ import (
 	"io"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 const NETCONF_DELIM string = "]]>]]>"
@@ -43,6 +44,7 @@ type Ncclient struct {
 	hostname string
 	key      string
 	port     int
+	timeout  time.Duration
 
 	sshClient     *ssh.Client
 	session       *ssh.Session
@@ -59,31 +61,52 @@ func (n Ncclient) Close() {
 	n.sshClient.Close()
 }
 
-func (n Ncclient) SendHello() io.Reader {
-	return n.Write(NETCONF_HELLO)
+func (n Ncclient) SendHello() (io.Reader, error) {
+	reader, err := n.Write(NETCONF_HELLO)
+	return reader, err
 }
 
 // TODO: use the xml module to add/remove rpc related tags
-func (n Ncclient) WriteRPC(line string) io.Reader {
+func (n Ncclient) WriteRPC(line string) (io.Reader, error) {
 	line = fmt.Sprintf("<rpc>%s</rpc>", line)
 	return n.Write(line)
 }
 
-func (n Ncclient) Write(line string) io.Reader {
+func (n Ncclient) Write(line string) (result io.Reader, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(runtime.Error); ok {
+				panic(r)
+			}
+			err = errors.New(r.(string))
+		}
+	}()
+
 	if _, err := io.WriteString(n.sessionStdin, line+NETCONF_DELIM); err != nil {
 		panic(err)
 	}
 
-	xmlBuffer := bytes.NewBufferString("")
-	scanner := bufio.NewScanner(n.sessionStdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == NETCONF_DELIM {
-			break
+	finished := make(chan *bytes.Buffer, 1)
+
+	go func() {
+		xmlBuffer := bytes.NewBufferString("")
+		scanner := bufio.NewScanner(n.sessionStdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == NETCONF_DELIM {
+				finished <- xmlBuffer
+				break
+			}
+			xmlBuffer.WriteString(line + "\n")
 		}
-		xmlBuffer.WriteString(line + "\n")
+	}()
+
+	select {
+	case result := <-finished:
+		return result, err
+	case <-time.After(n.timeout):
+		panic("Timed out waiting for NETCONF DELIMITER! Most likely a bad NETCONF speaker.")
 	}
-	return xmlBuffer
 }
 
 func MakeSshClient(username string, password string, hostname string, key string, port int) (*ssh.Client, *ssh.Session, io.WriteCloser, io.Reader) {
@@ -153,7 +176,7 @@ func (n *Ncclient) Connect() (err error) {
 	n.session = sshSession
 	n.sessionStdin = sessionStdin
 	n.sessionStdout = sessionStdout
-	return
+	return err
 }
 
 func MakeClient(username string, password string, hostname string, key string, port int) Ncclient {
@@ -163,5 +186,6 @@ func MakeClient(username string, password string, hostname string, key string, p
 	nc.hostname = hostname
 	nc.key = key
 	nc.port = port
+	nc.timeout = time.Second * 30
 	return *nc
 }
